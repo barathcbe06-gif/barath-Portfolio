@@ -1,25 +1,47 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { soundEngine } from '../ui/AudioController';
+import {
+  isWebGLAvailable,
+  getOptimalPixelRatio,
+  isMobileDevice,
+  disposeThreeScene,
+  observeVisibility
+} from '../../utils/webglHelper';
+import Hero3DFallback from './Hero3DFallback';
 
 export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
   const mountRef = useRef(null);
-  const [rotationSpeed, setRotationSpeed] = useState(1);
+  const [hasWebGL] = useState(() => isWebGLAvailable());
+  const rotationSpeedRef = useRef(1);
 
   useEffect(() => {
+    if (!hasWebGL) return;
     const container = mountRef.current;
     if (!container) return;
 
+    const isMobile = isMobileDevice();
     const scene = new THREE.Scene();
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+
+    let width = container.clientWidth || 360;
+    let height = container.clientHeight || 400;
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
     camera.position.set(0, 0, 4.5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+    } catch {
+      return;
+    }
+
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(getOptimalPixelRatio());
     container.appendChild(renderer.domElement);
 
     const mysticGroup = new THREE.Group();
@@ -51,15 +73,16 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
     const createEldritchCircle = (radius, segments, material) => {
       const geo = new THREE.BufferGeometry();
       const points = [];
-      for (let i = 0; i <= segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
+      const actualSegs = isMobile ? Math.floor(segments * 0.6) : segments;
+      for (let i = 0; i <= actualSegs; i++) {
+        const theta = (i / actualSegs) * Math.PI * 2;
         points.push(new THREE.Vector3(Math.cos(theta) * radius, Math.sin(theta) * radius, 0));
       }
       geo.setFromPoints(points);
       return new THREE.Line(geo, material);
     };
 
-    // Inner Geometric Mandala (Square inside Diamond inside Circle)
+    // Inner Geometric Mandala
     const ringOuter = createEldritchCircle(1.8, 80, mysticOrangeMat);
     const ringInner = createEldritchCircle(1.5, 60, mysticGoldMat);
     const ringCore = createEldritchCircle(0.9, 40, mysticOrangeMat);
@@ -70,8 +93,9 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
 
     // Mystic Runes (Radial Spoke Ticks)
     const spokeGroup = new THREE.Group();
-    for (let i = 0; i < 24; i++) {
-      const theta = (i / 24) * Math.PI * 2;
+    const spokeCount = isMobile ? 14 : 24;
+    for (let i = 0; i < spokeCount; i++) {
+      const theta = (i / spokeCount) * Math.PI * 2;
       const spokeGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(Math.cos(theta) * 1.5, Math.sin(theta) * 1.5, 0),
         new THREE.Vector3(Math.cos(theta) * 1.8, Math.sin(theta) * 1.8, 0)
@@ -81,13 +105,13 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
     }
     mysticGroup.add(spokeGroup);
 
-    // 3D Polyhedral Data Tensor at center (Icosahedron / Octahedron)
+    // 3D Polyhedral Data Tensor at center
     const tensorGeo = new THREE.IcosahedronGeometry(0.7, 1);
     const tensorMesh = new THREE.Mesh(tensorGeo, coreEnergyMat);
     mysticGroup.add(tensorMesh);
 
     // Outer Orbiting Sparks
-    const sparkCount = 90;
+    const sparkCount = isMobile ? 40 : 80;
     const sparkGeo = new THREE.BufferGeometry();
     const sparkPositions = new Float32Array(sparkCount * 3);
     const sparkAngles = new Float32Array(sparkCount);
@@ -107,7 +131,7 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
 
     const sparkMat = new THREE.PointsMaterial({
       color: 0xffe066,
-      size: 0.05,
+      size: isMobile ? 0.06 : 0.05,
       transparent: true,
       opacity: 0.9,
       blending: THREE.AdditiveBlending,
@@ -115,7 +139,7 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
     const sparks = new THREE.Points(sparkGeo, sparkMat);
     mysticGroup.add(sparks);
 
-    // Ambient & Point Light
+    // Point Light
     const amberLight = new THREE.PointLight(0xff8c00, 3, 5);
     amberLight.position.set(0, 0, 1.5);
     scene.add(amberLight);
@@ -127,28 +151,37 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     };
-    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
 
     const onResize = () => {
       if (!container) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      if (w > 0 && h > 0) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
     };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize, { passive: true });
 
-    let animationId;
+    let isVisible = true;
+    let animationId = null;
 
     const animate = () => {
+      if (!isVisible) {
+        animationId = null;
+        return;
+      }
+
       animationId = requestAnimationFrame(animate);
+      const currentSpeed = rotationSpeedRef.current;
 
       // Rotate concentric Eldritch rings in alternating directions
-      ringOuter.rotation.z += 0.008 * rotationSpeed;
-      ringInner.rotation.z -= 0.012 * rotationSpeed;
-      spokeGroup.rotation.z -= 0.012 * rotationSpeed;
-      ringCore.rotation.z += 0.015 * rotationSpeed;
+      ringOuter.rotation.z += 0.008 * currentSpeed;
+      ringInner.rotation.z -= 0.012 * currentSpeed;
+      spokeGroup.rotation.z -= 0.012 * currentSpeed;
+      ringCore.rotation.z += 0.015 * currentSpeed;
 
       // Tensor rotation
       tensorMesh.rotation.x += 0.01;
@@ -161,7 +194,7 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
       // Animate sparks in vortex
       const positions = sparkGeo.attributes.position.array;
       for (let i = 0; i < sparkCount; i++) {
-        sparkAngles[i] += sparkSpeeds[i] * rotationSpeed;
+        sparkAngles[i] += sparkSpeeds[i] * currentSpeed;
         positions[i * 3] = Math.cos(sparkAngles[i]) * sparkRadii[i] + (Math.random() - 0.5) * 0.04;
         positions[i * 3 + 1] = Math.sin(sparkAngles[i]) * sparkRadii[i] + (Math.random() - 0.5) * 0.04;
         positions[i * 3 + 2] = Math.sin(sparkAngles[i] * 3) * 0.2;
@@ -171,26 +204,41 @@ export default function MysticRingsCanvas({ activeDimension = 'TENSORS' }) {
       renderer.render(scene, camera);
     };
 
+    // Pause/Resume loop on scroll & visibility
+    const disconnectObserver = observeVisibility(container, (visible) => {
+      isVisible = visible;
+      if (visible && !animationId) {
+        animate();
+      }
+    });
+
     animate();
 
     const handleClick = () => {
       soundEngine.playMysticRing();
-      setRotationSpeed(3.5);
-      setTimeout(() => setRotationSpeed(1), 700);
+      rotationSpeedRef.current = 3.5;
+      setTimeout(() => {
+        rotationSpeedRef.current = 1;
+      }, 700);
     };
     container.addEventListener('click', handleClick);
 
     return () => {
-      cancelAnimationFrame(animationId);
+      disconnectObserver();
+      if (animationId) cancelAnimationFrame(animationId);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', onResize);
       container.removeEventListener('click', handleClick);
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      renderer.dispose();
+      disposeThreeScene(scene, renderer);
     };
-  }, [rotationSpeed]);
+  }, [hasWebGL]);
+
+  if (!hasWebGL) {
+    return <Hero3DFallback type="mystic-rings" />;
+  }
 
   return (
     <div className="relative w-full h-[400px] md:h-[480px] flex items-center justify-center select-none">

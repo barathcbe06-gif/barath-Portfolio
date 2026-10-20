@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import MysticRingsCanvas from '../3d/MysticRingsCanvas';
+import React, { useState, lazy, Suspense } from 'react';
 import { soundEngine } from '../ui/AudioController';
 import { Compass, Sparkles, Database, BarChart3, Binary, Layers } from 'lucide-react';
+import Hero3DFallback from '../3d/Hero3DFallback';
+
+const MysticRingsCanvas = lazy(() => import('../3d/MysticRingsCanvas'));
 
 export default function DoctorStrangeSection() {
   const [activeDimension, setActiveDimension] = useState('TENSORS');
@@ -79,7 +81,9 @@ export default function DoctorStrangeSection() {
               <div className="absolute top-3 left-3 text-[10px] font-mono text-amber-400/60">
                 SLING-RING DATA MATRIX // EYE OF AGAMOTTO ACTIVE
               </div>
-              <MysticRingsCanvas activeDimension={activeDimension} />
+              <Suspense fallback={<Hero3DFallback type="mystic-rings" />}>
+                <MysticRingsCanvas activeDimension={activeDimension} />
+              </Suspense>
             </div>
           </div>
 

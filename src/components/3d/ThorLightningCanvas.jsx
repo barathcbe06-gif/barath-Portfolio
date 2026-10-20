@@ -1,24 +1,34 @@
 import React, { useEffect, useRef } from 'react';
 import { soundEngine } from '../ui/AudioController';
+import { observeVisibility } from '../../utils/webglHelper';
 
 export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 }) {
   const canvasRef = useRef(null);
+  const isActiveRef = useRef(isActive);
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    let animationId;
+    if (!ctx) return;
 
-    let width = (canvas.width = canvas.parentElement.clientWidth);
-    let height = (canvas.height = canvas.parentElement.clientHeight);
+    let animationId = null;
+    let isVisible = true;
+
+    const parent = canvas.parentElement;
+    let width = (canvas.width = parent ? parent.clientWidth : 800);
+    let height = (canvas.height = parent ? parent.clientHeight : 600);
 
     const onResize = () => {
       if (!canvas.parentElement) return;
       width = canvas.width = canvas.parentElement.clientWidth;
       height = canvas.height = canvas.parentElement.clientHeight;
     };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize, { passive: true });
 
     // Lightning Bolt Generator
     class LightningBolt {
@@ -39,7 +49,7 @@ export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 
         const dx = this.endX - this.startX;
         const dy = this.endY - this.startY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const steps = Math.max(8, Math.floor(dist / 25));
+        const steps = Math.max(6, Math.floor(dist / 30));
 
         for (let i = 1; i < steps; i++) {
           const t = i / steps;
@@ -52,7 +62,7 @@ export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 
           this.points.push({ x: px, y: py });
 
           // Branching
-          if (this.branchLevel < 2 && Math.random() < 0.22) {
+          if (this.branchLevel < 2 && Math.random() < 0.2) {
             const branchAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.9;
             const branchDist = dist * 0.45;
             const bx = px + Math.cos(branchAngle) * branchDist;
@@ -68,14 +78,15 @@ export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 
         context.save();
         context.strokeStyle = `rgba(100, 230, 255, ${this.alpha})`;
         context.shadowColor = '#00f0ff';
-        context.shadowBlur = 18;
+        context.shadowBlur = 14;
         context.lineWidth = Math.max(1, (3 - this.branchLevel * 0.8) * this.alpha);
         context.beginPath();
 
-        this.points.forEach((pt, idx) => {
-          if (idx === 0) context.moveTo(pt.x, pt.y);
+        for (let i = 0; i < this.points.length; i++) {
+          const pt = this.points[i];
+          if (i === 0) context.moveTo(pt.x, pt.y);
           else context.lineTo(pt.x, pt.y);
-        });
+        }
         context.stroke();
 
         // Inner hot core
@@ -85,8 +96,10 @@ export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 
 
         context.restore();
 
-        this.branches.forEach((b) => b.draw(context));
-        this.alpha -= 0.045;
+        for (let i = 0; i < this.branches.length; i++) {
+          this.branches[i].draw(context);
+        }
+        this.alpha -= 0.05;
       }
     }
 
@@ -102,27 +115,44 @@ export default function ThorLightningCanvas({ isActive = false, triggerBolt = 0 
     };
 
     const animate = (timestamp) => {
+      if (!isVisible) {
+        animationId = null;
+        return;
+      }
+
       animationId = requestAnimationFrame(animate);
       ctx.clearRect(0, 0, width, height);
 
-      if (timestamp - lastBoltTime > (isActive ? 700 : 2500)) {
-        if (Math.random() < (isActive ? 0.8 : 0.4)) {
+      const active = isActiveRef.current;
+      if (timestamp - lastBoltTime > (active ? 700 : 2500)) {
+        if (Math.random() < (active ? 0.8 : 0.4)) {
           spawnAmbientBolt();
         }
         lastBoltTime = timestamp;
       }
 
       bolts = bolts.filter((b) => b.alpha > 0);
-      bolts.forEach((b) => b.draw(ctx));
+      for (let i = 0; i < bolts.length; i++) {
+        bolts[i].draw(ctx);
+      }
     };
+
+    // Pause/Resume loop on scroll & visibility
+    const disconnectObserver = observeVisibility(canvas, (visible) => {
+      isVisible = visible;
+      if (visible && !animationId) {
+        animationId = requestAnimationFrame(animate);
+      }
+    });
 
     animationId = requestAnimationFrame(animate);
 
     return () => {
-      cancelAnimationFrame(animationId);
+      disconnectObserver();
+      if (animationId) cancelAnimationFrame(animationId);
       window.removeEventListener('resize', onResize);
     };
-  }, [isActive]);
+  }, []);
 
   // Trigger manual lightning surge on prop change
   useEffect(() => {

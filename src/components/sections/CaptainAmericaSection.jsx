@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { personalInfo } from '../../data/portfolioData';
-import VibraniumShieldCanvas from '../3d/VibraniumShieldCanvas';
-import { soundEngine } from '../ui/AudioController';
-import { Shield, Award, GraduationCap, Target, Compass, Sparkles } from 'lucide-react';
+import { Shield, GraduationCap, Target, Compass, Sparkles } from 'lucide-react';
+import Hero3DFallback from '../3d/Hero3DFallback';
+
+const VibraniumShieldCanvas = lazy(() => import('../3d/VibraniumShieldCanvas'));
 
 export default function CaptainAmericaSection() {
   return (
@@ -36,7 +37,9 @@ export default function CaptainAmericaSection() {
           {/* Left: 3D Interactive Vibranium Shield */}
           <div className="lg:col-span-5 relative flex items-center justify-center">
             <div className="w-full glass-panel rounded-3xl p-4 border border-blue-500/30 shadow-[0_0_50px_rgba(46,134,222,0.2)]">
-              <VibraniumShieldCanvas />
+              <Suspense fallback={<Hero3DFallback type="shield" />}>
+                <VibraniumShieldCanvas />
+              </Suspense>
               <div className="text-center text-[11px] font-mono text-slate-400 mt-2">
                 DEFENSIVE ARCHITECTURE • UNBREAKABLE DETERMINATION
               </div>

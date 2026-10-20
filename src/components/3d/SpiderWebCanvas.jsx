@@ -1,20 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { skillsData } from '../../data/portfolioData';
 import { soundEngine } from '../ui/AudioController';
+import { observeVisibility } from '../../utils/webglHelper';
 
-export default function SpiderWebCanvas({ onSelectSkill }) {
+export default function SpiderWebCanvas({ onSelectSkill, activeSkill: parentActiveSkill }) {
   const canvasRef = useRef(null);
-  const [activeSkill, setActiveSkill] = useState(skillsData[0]);
-  const [hoveredSkill, setHoveredSkill] = useState(null);
+  const [internalActiveSkill, setInternalActiveSkill] = useState(skillsData[0]);
+
+  const activeSkill = parentActiveSkill || internalActiveSkill;
+  const activeSkillRef = useRef(activeSkill);
+  useEffect(() => {
+    activeSkillRef.current = activeSkill;
+  }, [activeSkill]);
+
+  const onSelectSkillRef = useRef(onSelectSkill);
+  useEffect(() => {
+    onSelectSkillRef.current = onSelectSkill;
+  }, [onSelectSkill]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    let animationId;
+    if (!ctx) return;
 
-    let width = (canvas.width = canvas.parentElement.clientWidth);
-    let height = (canvas.height = canvas.parentElement.clientHeight);
+    let animationId = null;
+    let isVisible = true;
+
+    const parent = canvas.parentElement;
+    let width = (canvas.width = parent ? parent.clientWidth : 400);
+    let height = (canvas.height = parent ? parent.clientHeight : 460);
 
     const onResize = () => {
       if (!canvas.parentElement) return;
@@ -22,7 +37,7 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
       height = canvas.height = canvas.parentElement.clientHeight;
       layoutNodes();
     };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize, { passive: true });
 
     // Node Positions
     let nodes = [];
@@ -32,7 +47,6 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
       const radius = Math.min(width, height) * 0.36;
 
       nodes = skillsData.map((skill, index) => {
-        // Special center node for Python or distribution
         if (index === 0) {
           return {
             ...skill,
@@ -65,63 +79,102 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
 
     layoutNodes();
 
-    // Mouse Interaction
-    let mouse = { x: -1000, y: -1000, isDown: false, draggedNode: null };
+    // Mouse & Touch Interaction without React state updates in loop
+    const mouse = { x: -1000, y: -1000, isDown: false, draggedNode: null, hoveredNode: null };
 
-    const onMouseMove = (e) => {
+    const updatePointerPos = (clientX, clientY) => {
       const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
+      mouse.x = clientX - rect.left;
+      mouse.y = clientY - rect.top;
 
       let found = null;
-      nodes.forEach((node) => {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
         const dx = mouse.x - node.x;
         const dy = mouse.y - node.y;
-        if (Math.hypot(dx, dy) < node.radius + 6) {
+        if (dx * dx + dy * dy < (node.radius + 6) * (node.radius + 6)) {
           found = node;
+          break;
         }
-      });
-      setHoveredSkill(found);
+      }
+      mouse.hoveredNode = found;
     };
 
-    const onMouseDown = (e) => {
+    const handlePointerDown = (clientX, clientY) => {
+      updatePointerPos(clientX, clientY);
       soundEngine.playHudClick();
       mouse.isDown = true;
-      nodes.forEach((node) => {
+
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
         const dx = mouse.x - node.x;
         const dy = mouse.y - node.y;
-        if (Math.hypot(dx, dy) < node.radius + 8) {
+        if (dx * dx + dy * dy < (node.radius + 10) * (node.radius + 10)) {
           mouse.draggedNode = node;
-          setActiveSkill(node);
-          if (onSelectSkill) onSelectSkill(node);
+          setInternalActiveSkill(node);
+          if (onSelectSkillRef.current) onSelectSkillRef.current(node);
           soundEngine.playHologramChime();
+          break;
         }
-      });
+      }
     };
 
-    const onMouseUp = () => {
+    const handlePointerUp = () => {
       mouse.isDown = false;
       mouse.draggedNode = null;
     };
 
-    canvas.addEventListener('mousemove', onMouseMove);
+    // Mouse Event Listeners
+    const onMouseMove = (e) => updatePointerPos(e.clientX, e.clientY);
+    const onMouseDown = (e) => handlePointerDown(e.clientX, e.clientY);
+    const onMouseUp = () => handlePointerUp();
+
+    // Touch Event Listeners (Enables full mobile interactivity!)
+    const onTouchStart = (e) => {
+      if (e.touches.length > 0) {
+        handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+    const onTouchMove = (e) => {
+      if (e.touches.length > 0) {
+        updatePointerPos(e.touches[0].clientX, e.touches[0].clientY);
+        if (mouse.draggedNode) {
+          e.preventDefault(); // Prevent page scroll while dragging a web node
+        }
+      }
+    };
+    const onTouchEnd = () => handlePointerUp();
+
+    canvas.addEventListener('mousemove', onMouseMove, { passive: true });
     canvas.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
 
     // Animation Loop with Spring Tension Physics
     let step = 0;
     const animate = () => {
+      if (!isVisible) {
+        animationId = null;
+        return;
+      }
+
       animationId = requestAnimationFrame(animate);
       step += 0.03;
       ctx.clearRect(0, 0, width, height);
 
+      const currentActive = activeSkillRef.current;
+      const hovered = mouse.hoveredNode;
+
       // Physics: drag & spring return
-      nodes.forEach((node) => {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
         if (mouse.draggedNode === node) {
           node.x = mouse.x;
           node.y = mouse.y;
         } else {
-          // Spring force back to base position
           const k = 0.08;
           const damping = 0.82;
           const fx = (node.baseX - node.x) * k;
@@ -133,33 +186,32 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
           node.x += node.vx;
           node.y += node.vy;
 
-          // Mouse push repulsion
           const mdx = node.x - mouse.x;
           const mdy = node.y - mouse.y;
-          const mdist = Math.hypot(mdx, mdy);
-          if (mdist < 80 && mdist > 0) {
+          const mdistSq = mdx * mdx + mdy * mdy;
+          if (mdistSq < 6400 && mdistSq > 0) {
+            const mdist = Math.sqrt(mdistSq);
             const push = (80 - mdist) * 0.08;
             node.x += (mdx / mdist) * push;
             node.y += (mdy / mdist) * push;
           }
         }
-      });
+      }
 
-      // 1. Draw Spider Web Strands (Concentric Spiral Web)
+      // 1. Draw Spider Web Strands
       const center = nodes[0];
       if (center) {
         // Radial Web Lines
         for (let i = 1; i < nodes.length; i++) {
           const target = nodes[i];
-          const isConnectedToActive = activeSkill && (activeSkill.name === center.name || activeSkill.name === target.name);
+          const isConnectedToActive = currentActive && (currentActive.name === center.name || currentActive.name === target.name);
 
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(center.x, center.y);
 
-          // Elastic curved web sag
-          const midX = (center.x + target.x) / 2;
-          const midY = (center.y + target.y) / 2 + Math.sin(step + i) * 3;
+          const midX = (center.x + target.x) * 0.5;
+          const midY = (center.y + target.y) * 0.5 + Math.sin(step + i) * 3;
           ctx.quadraticCurveTo(midX, midY, target.x, target.y);
 
           if (isConnectedToActive) {
@@ -180,13 +232,13 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
         for (let i = 1; i < nodes.length; i++) {
           const next = i === nodes.length - 1 ? nodes[1] : nodes[i + 1];
           const curr = nodes[i];
-          const isLatticeActive = activeSkill && (activeSkill.name === curr.name || activeSkill.name === next.name);
+          const isLatticeActive = currentActive && (currentActive.name === curr.name || currentActive.name === next.name);
 
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(curr.x, curr.y);
-          const midX = (curr.x + next.x) / 2;
-          const midY = (curr.y + next.y) / 2 + Math.cos(step + i) * 2;
+          const midX = (curr.x + next.x) * 0.5;
+          const midY = (curr.y + next.y) * 0.5 + Math.cos(step + i) * 2;
           ctx.quadraticCurveTo(midX, midY, next.x, next.y);
 
           if (isLatticeActive) {
@@ -203,7 +255,9 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
         }
 
         // Concentric Inner Spiral Rings
-        [0.35, 0.65].forEach((ratio, ringIdx) => {
+        const ratios = [0.35, 0.65];
+        for (let rIdx = 0; rIdx < ratios.length; rIdx++) {
+          const ratio = ratios[rIdx];
           ctx.save();
           ctx.beginPath();
           for (let i = 1; i < nodes.length; i++) {
@@ -224,19 +278,19 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
           ctx.setLineDash([4, 4]);
           ctx.stroke();
           ctx.restore();
-        });
+        }
       }
 
       // 2. Draw Interactive Tech Orbs
-      nodes.forEach((node) => {
-        const isSelected = activeSkill && activeSkill.name === node.name;
-        const isHovered = hoveredSkill && hoveredSkill.name === node.name;
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const isSelected = currentActive && currentActive.name === node.name;
+        const isHovered = hovered && hovered.name === node.name;
 
         ctx.save();
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
 
-        // Core Gradient Fill
         const gradient = ctx.createRadialGradient(
           node.x - node.radius * 0.3,
           node.y - node.radius * 0.3,
@@ -251,13 +305,13 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
           gradient.addColorStop(0.4, '#00f0ff');
           gradient.addColorStop(1, '#034159');
           ctx.shadowColor = '#00f0ff';
-          ctx.shadowBlur = 24;
+          ctx.shadowBlur = 20;
         } else if (isHovered) {
           gradient.addColorStop(0, '#ffffff');
           gradient.addColorStop(0.5, '#e62429');
           gradient.addColorStop(1, '#2c0b0e');
           ctx.shadowColor = '#e62429';
-          ctx.shadowBlur = 18;
+          ctx.shadowBlur = 16;
         } else {
           gradient.addColorStop(0, '#1e293b');
           gradient.addColorStop(0.7, '#0f172a');
@@ -269,12 +323,10 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
         ctx.fillStyle = gradient;
         ctx.fill();
 
-        // Border
         ctx.strokeStyle = isSelected ? '#00f0ff' : isHovered ? '#ff4d4d' : 'rgba(255,255,255,0.25)';
         ctx.lineWidth = isSelected ? 3 : 1.5;
         ctx.stroke();
 
-        // Node Label
         ctx.fillStyle = '#ffffff';
         ctx.font = `${node.isCenter ? 'bold 12px' : '11px'} Orbitron, sans-serif`;
         ctx.textAlign = 'center';
@@ -282,24 +334,35 @@ export default function SpiderWebCanvas({ onSelectSkill }) {
         ctx.shadowColor = '#000000';
         ctx.shadowBlur = 4;
 
-        // Truncate if long on mobile
         const displayLabel = node.name.length > 13 ? node.name.substring(0, 11) + '..' : node.name;
         ctx.fillText(displayLabel, node.x, node.y);
 
         ctx.restore();
-      });
+      }
     };
+
+    // Pause/Resume loop on scroll & visibility
+    const disconnectObserver = observeVisibility(canvas, (visible) => {
+      isVisible = visible;
+      if (visible && !animationId) {
+        animate();
+      }
+    });
 
     animate();
 
     return () => {
-      cancelAnimationFrame(animationId);
+      disconnectObserver();
+      if (animationId) cancelAnimationFrame(animationId);
       window.removeEventListener('resize', onResize);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
     };
-  }, [activeSkill, onSelectSkill]);
+  }, []);
 
   return (
     <div className="relative w-full h-[460px] md:h-[540px] select-none">

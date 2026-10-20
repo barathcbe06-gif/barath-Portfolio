@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Cpu, Zap, ShieldCheck, Terminal, RefreshCw, Volume2 } from 'lucide-react';
+import { X, Zap, ShieldCheck, Terminal, RefreshCw } from 'lucide-react';
 import { soundEngine } from './AudioController';
 
 export default function JarvisVoiceHUD({ isOpen, onClose }) {

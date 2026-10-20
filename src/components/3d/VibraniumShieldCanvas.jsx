@@ -1,25 +1,47 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { soundEngine } from '../ui/AudioController';
+import {
+  isWebGLAvailable,
+  getOptimalPixelRatio,
+  isMobileDevice,
+  disposeThreeScene,
+  observeVisibility
+} from '../../utils/webglHelper';
+import Hero3DFallback from './Hero3DFallback';
 
 export default function VibraniumShieldCanvas() {
   const mountRef = useRef(null);
-  const [spinSpeed, setSpinSpeed] = useState(0.4);
+  const [hasWebGL] = useState(() => isWebGLAvailable());
+  const spinSpeedRef = useRef(0.4);
 
   useEffect(() => {
+    if (!hasWebGL) return;
     const container = mountRef.current;
     if (!container) return;
 
+    const isMobile = isMobileDevice();
     const scene = new THREE.Scene();
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+
+    let width = container.clientWidth || 340;
+    let height = container.clientHeight || 360;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(0, 0, 4.2);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+    } catch {
+      return;
+    }
+
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(getOptimalPixelRatio());
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(renderer.domElement);
 
@@ -54,10 +76,9 @@ export default function VibraniumShieldCanvas() {
     });
 
     // Curvature Base Geometry (Shallow convex dish)
-    const segments = 64;
+    const segments = isMobile ? 36 : 64;
     const createCurvedRing = (innerR, outerR, material, zOffset = 0) => {
       const geo = new THREE.RingGeometry(innerR, outerR, segments);
-      // Slight convex curvature
       const pos = geo.attributes.position;
       for (let i = 0; i < pos.count; i++) {
         const x = pos.getX(i);
@@ -113,7 +134,7 @@ export default function VibraniumShieldCanvas() {
     const starExtrudeSettings = {
       depth: 0.05,
       bevelEnabled: true,
-      bevelSegments: 3,
+      bevelSegments: isMobile ? 1 : 2,
       steps: 1,
       bevelSize: 0.02,
       bevelThickness: 0.02,
@@ -123,8 +144,8 @@ export default function VibraniumShieldCanvas() {
     starMesh.position.z = 0.23;
     shieldGroup.add(starMesh);
 
-    // Vibranium Shockwave Energy Ring (Orbiting glow)
-    const haloGeo = new THREE.RingGeometry(1.65, 1.72, 64);
+    // Vibranium Shockwave Energy Ring
+    const haloGeo = new THREE.RingGeometry(1.65, 1.72, isMobile ? 32 : 64);
     const haloMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
       transparent: true,
@@ -157,27 +178,36 @@ export default function VibraniumShieldCanvas() {
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     };
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
 
     const handleResize = () => {
       if (!container) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      if (w > 0 && h > 0) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
 
-    let animationId;
+    let isVisible = true;
+    let animationId = null;
     const startTime = performance.now();
 
     const animate = () => {
+      if (!isVisible) {
+        animationId = null;
+        return;
+      }
+
       animationId = requestAnimationFrame(animate);
       const elapsed = (performance.now() - startTime) * 0.001;
+      const currentSpinSpeed = spinSpeedRef.current;
 
       // Shield rotation on Z-axis
-      shieldGroup.rotation.z += 0.005 * spinSpeed;
+      shieldGroup.rotation.z += 0.005 * currentSpinSpeed;
 
       // Mouse interactive tilt
       shieldGroup.rotation.y = THREE.MathUtils.lerp(shieldGroup.rotation.y, mouse.x * 0.5, 0.06);
@@ -190,26 +220,41 @@ export default function VibraniumShieldCanvas() {
       renderer.render(scene, camera);
     };
 
+    // Pause/Resume loop on scroll & visibility
+    const disconnectObserver = observeVisibility(container, (visible) => {
+      isVisible = visible;
+      if (visible && !animationId) {
+        animate();
+      }
+    });
+
     animate();
 
     const handleClick = () => {
       soundEngine.playRepulsorBlast();
-      setSpinSpeed(6);
-      setTimeout(() => setSpinSpeed(0.4), 1000);
+      spinSpeedRef.current = 6;
+      setTimeout(() => {
+        spinSpeedRef.current = 0.4;
+      }, 1000);
     };
     container.addEventListener('click', handleClick);
 
     return () => {
-      cancelAnimationFrame(animationId);
+      disconnectObserver();
+      if (animationId) cancelAnimationFrame(animationId);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
       container.removeEventListener('click', handleClick);
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      renderer.dispose();
+      disposeThreeScene(scene, renderer);
     };
-  }, [spinSpeed]);
+  }, [hasWebGL]);
+
+  if (!hasWebGL) {
+    return <Hero3DFallback type="shield" />;
+  }
 
   return (
     <div className="relative w-full h-[360px] md:h-[440px] flex items-center justify-center select-none">

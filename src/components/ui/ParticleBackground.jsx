@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { isMobileDevice } from '../../utils/webglHelper';
 
 export default function ParticleBackground() {
   const canvasRef = useRef(null);
@@ -7,7 +8,10 @@ export default function ParticleBackground() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    let animationId;
+    if (!ctx) return;
+
+    let animationId = null;
+    let isHidden = false;
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
@@ -16,28 +20,35 @@ export default function ParticleBackground() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
     };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize, { passive: true });
 
-    const particleCount = Math.min(65, Math.floor(window.innerWidth / 25));
+    const isMobile = isMobileDevice();
+    const particleCount = isMobile ? 22 : Math.min(48, Math.floor(window.innerWidth / 32));
     const particles = [];
 
     for (let i = 0; i < particleCount; i++) {
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        radius: Math.random() * 1.8 + 0.5,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: -0.2 - Math.random() * 0.4,
-        alpha: Math.random() * 0.6 + 0.2,
+        radius: Math.random() * 1.6 + 0.6,
+        vx: (Math.random() - 0.5) * 0.25,
+        vy: -0.2 - Math.random() * 0.35,
+        alpha: Math.random() * 0.5 + 0.2,
         color: Math.random() > 0.4 ? 'rgba(0, 240, 255,' : 'rgba(245, 176, 65,',
       });
     }
 
     const animate = () => {
+      if (isHidden) {
+        animationId = null;
+        return;
+      }
+
       animationId = requestAnimationFrame(animate);
       ctx.clearRect(0, 0, width, height);
 
-      particles.forEach((p) => {
+      for (let i = 0; i < particleCount; i++) {
+        const p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
 
@@ -51,17 +62,25 @@ export default function ParticleBackground() {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = `${p.color} ${p.alpha})`;
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 6;
+        // Removed expensive ctx.shadowBlur which forces CPU-GPU raster passes on every particle
         ctx.fill();
-      });
+      }
     };
+
+    const handleVisibility = () => {
+      isHidden = document.hidden;
+      if (!isHidden && !animationId) {
+        animate();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     animate();
 
     return () => {
-      cancelAnimationFrame(animationId);
+      if (animationId) cancelAnimationFrame(animationId);
       window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 

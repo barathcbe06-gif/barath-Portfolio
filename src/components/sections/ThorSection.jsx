@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { projectsData } from '../../data/portfolioData';
 import ThorLightningCanvas from '../3d/ThorLightningCanvas';
 import { soundEngine } from '../ui/AudioController';
-import { Zap, ExternalLink, Sparkles, Layers, Cpu } from 'lucide-react';
+import { Zap, ExternalLink, Sparkles, Cpu } from 'lucide-react';
 import { GithubIcon } from '../ui/Icons';
 
 export default function ThorSection({ onSelectProject }) {

@@ -2,7 +2,7 @@ import React from 'react';
 import { personalInfo } from '../../data/portfolioData';
 import IronManHeroCanvas from '../3d/IronManHeroCanvas';
 import { soundEngine } from '../ui/AudioController';
-import { ArrowRight, Shield, Zap, Sparkles, Terminal } from 'lucide-react';
+import { ArrowRight, Shield, Terminal } from 'lucide-react';
 
 export default function HeroSection({ onOpenJarvis }) {
   const scrollTo = (id) => {
@@ -10,6 +10,10 @@ export default function HeroSection({ onOpenJarvis }) {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handlePowerSurge = React.useCallback(() => {
+    soundEngine.playRepulsorBlast();
+  }, []);
 
   return (
     <section 
@@ -28,10 +32,17 @@ export default function HeroSection({ onOpenJarvis }) {
           <div className="lg:col-span-6 space-y-6 text-left">
             
             {/* Top Clearance Tag */}
-            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-panel border border-cyan-500/40 text-xs font-mono text-cyan-300 shadow-[0_0_20px_rgba(0,240,255,0.2)]">
+            <button
+              onClick={() => {
+                soundEngine.playHologramChime();
+                if (onOpenJarvis) onOpenJarvis();
+              }}
+              className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-panel border border-cyan-500/40 text-xs font-mono text-cyan-300 shadow-[0_0_20px_rgba(0,240,255,0.2)] hover:border-cyan-400 hover:shadow-[0_0_25px_rgba(0,240,255,0.4)] transition-all cursor-pointer"
+              title="Click to launch J.A.R.V.I.S. Tactical HUD"
+            >
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
               <span className="tracking-wider">STARK INDUSTRIES AI DIVISION // ACTIVE</span>
-            </div>
+            </button>
 
             {/* Main Name & Hero Typography */}
             <div className="space-y-2">
@@ -109,7 +120,7 @@ export default function HeroSection({ onOpenJarvis }) {
             <div className="absolute w-[450px] h-[450px] rounded-full border border-cyan-500/20 -z-10 animate-spin pointer-events-none" style={{ animationDuration: '40s' }} />
             <div className="absolute w-[360px] h-[360px] rounded-full border border-dashed border-red-500/20 -z-10 animate-spin pointer-events-none" style={{ animationDuration: '30s', animationDirection: 'reverse' }} />
             
-            <IronManHeroCanvas onPowerSurge={() => soundEngine.playRepulsorBlast()} />
+            <IronManHeroCanvas onPowerSurge={handlePowerSurge} />
           </div>
 
         </div>

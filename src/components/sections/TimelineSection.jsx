@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { timelineData } from '../../data/portfolioData';
 import { soundEngine } from '../ui/AudioController';
-import { Clock, CheckCircle2, Award, Calendar, BookOpen, Shield } from 'lucide-react';
+import { Clock, CheckCircle2 } from 'lucide-react';
 
 export default function TimelineSection() {
   const [filter, setFilter] = useState('ALL');

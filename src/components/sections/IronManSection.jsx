@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { aiProtocols } from '../../data/portfolioData';
 import { soundEngine } from '../ui/AudioController';
-import { Cpu, Zap, Activity, Sliders, Shield, Play } from 'lucide-react';
+import { Cpu, Zap, Sliders, Play } from 'lucide-react';
 
 export default function IronManSection() {
   const [learningRate, setLearningRate] = useState(0.001);

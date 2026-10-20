@@ -9,23 +9,32 @@ export default function Navbar({ onOpenJarvis }) {
   const [activeSection, setActiveSection] = useState('hero');
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
+    let ticking = false;
 
-      const sections = ['hero', 'ai-ml', 'data-science', 'projects', 'about', 'skills', 'timeline', 'contact'];
-      for (const section of sections) {
-        const el = document.getElementById(section);
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 200 && rect.bottom >= 200) {
-            setActiveSection(section);
-            break;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const isScrolled = window.scrollY > 50;
+          setScrolled((prev) => (prev !== isScrolled ? isScrolled : prev));
+
+          const sections = ['hero', 'ai-ml', 'data-science', 'projects', 'about', 'skills', 'timeline', 'contact'];
+          for (let i = sections.length - 1; i >= 0; i--) {
+            const el = document.getElementById(sections[i]);
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              if (rect.top <= 250) {
+                setActiveSection((prev) => (prev !== sections[i] ? sections[i] : prev));
+                break;
+              }
+            }
           }
-        }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 

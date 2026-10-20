@@ -3,7 +3,6 @@ import { personalInfo } from '../../data/portfolioData';
 import { soundEngine } from '../ui/AudioController';
 import { Mail, Send, CheckCircle2, Shield, Copy, Check, Radio } from 'lucide-react';
 import { LinkedinIcon, GithubIcon } from '../ui/Icons';
-import confetti from 'canvas-confetti';
 
 export default function ContactSection() {
   const [copied, setCopied] = useState(false);
@@ -25,18 +24,23 @@ export default function ContactSection() {
     soundEngine.playRepulsorBlast();
     setIsTransmitting(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       soundEngine.playHologramChime();
       setIsTransmitting(false);
       setTransmitted(true);
 
-      // Trigger Avengers celebratory confetti
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.8 },
-        colors: ['#00f0ff', '#e62429', '#f5b041']
-      });
+      // Lazy load confetti only when form is submitted
+      try {
+        const confetti = (await import('canvas-confetti')).default;
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.8 },
+          colors: ['#00f0ff', '#e62429', '#f5b041']
+        });
+      } catch {
+        // Fallback gracefully
+      }
 
       setTimeout(() => {
         setFormState({ name: '', email: '', message: '' });
@@ -176,7 +180,7 @@ export default function ContactSection() {
                   <div>
                     <span className="text-[10px] font-mono text-slate-400 uppercase block">OPEN-SOURCE ARSENAL</span>
                     <span className="text-xs sm:text-sm font-['Orbitron'] font-semibold text-white group-hover:text-cyan-300">
-                      GitHub // barath-datascience
+                      GitHub // barathcbe06-gif
                     </span>
                   </div>
                 </div>

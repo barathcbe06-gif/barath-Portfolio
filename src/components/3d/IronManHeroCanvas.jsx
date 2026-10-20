@@ -1,29 +1,57 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { soundEngine } from '../ui/AudioController';
+import {
+  isWebGLAvailable,
+  getOptimalPixelRatio,
+  isMobileDevice,
+  disposeThreeScene,
+  observeVisibility
+} from '../../utils/webglHelper';
+import Hero3DFallback from './Hero3DFallback';
 
 export default function IronManHeroCanvas({ onPowerSurge }) {
   const mountRef = useRef(null);
   const [corePower, setCorePower] = useState(100);
   const [isCharging, setIsCharging] = useState(false);
+  const [hasWebGL] = useState(() => isWebGLAvailable());
+
+  // Store callback in ref to prevent scene teardown when HeroSection re-renders
+  const onPowerSurgeRef = useRef(onPowerSurge);
+  useEffect(() => {
+    onPowerSurgeRef.current = onPowerSurge;
+  }, [onPowerSurge]);
 
   useEffect(() => {
+    if (!hasWebGL) return;
     const container = mountRef.current;
     if (!container) return;
+
+    const isMobile = isMobileDevice();
 
     // Scene, Camera, Renderer
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x030712, 0.04);
 
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    let width = container.clientWidth || 360;
+    let height = container.clientHeight || 540;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(0, 0.5, 5.2);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile, // Disable MSAA on mobile for massive fill-rate performance boost
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+    } catch {
+      return;
+    }
+
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(getOptimalPixelRatio());
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.25;
     container.appendChild(renderer.domElement);
@@ -96,7 +124,7 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     chestGroup.add(collar);
 
     // Shoulders
-    const leftShoulderGeo = new THREE.SphereGeometry(0.38, 16, 16);
+    const leftShoulderGeo = new THREE.SphereGeometry(0.38, isMobile ? 12 : 16, isMobile ? 12 : 16);
     const leftShoulder = new THREE.Mesh(leftShoulderGeo, armorRedMat);
     leftShoulder.position.set(-1.15, -0.15, 0);
     leftShoulder.scale.set(1.2, 0.8, 1);
@@ -106,23 +134,23 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     rightShoulder.position.set(1.15, -0.15, 0);
     chestGroup.add(rightShoulder);
 
-    // --- 2. ARC REACTOR CORE (Detailed Glowing Concentric Discs) ---
+    // --- 2. ARC REACTOR CORE ---
     const arcReactorGroup = new THREE.Group();
     arcReactorGroup.position.set(0, -0.22, 0.46);
     chestGroup.add(arcReactorGroup);
 
     // Housing Bezel
-    const arcBezelGeo = new THREE.TorusGeometry(0.24, 0.04, 16, 32);
+    const arcBezelGeo = new THREE.TorusGeometry(0.24, 0.04, 12, isMobile ? 20 : 32);
     const arcBezel = new THREE.Mesh(arcBezelGeo, armorGoldMat);
     arcReactorGroup.add(arcBezel);
 
     // Inner Glowing Ring
-    const innerRingGeo = new THREE.TorusGeometry(0.14, 0.02, 16, 24);
+    const innerRingGeo = new THREE.TorusGeometry(0.14, 0.02, 12, isMobile ? 16 : 24);
     const innerRing = new THREE.Mesh(innerRingGeo, arcCoreMat);
     arcReactorGroup.add(innerRing);
 
     // Core Crystal Point
-    const crystalGeo = new THREE.OctahedronGeometry(0.1, 2);
+    const crystalGeo = new THREE.OctahedronGeometry(0.1, 1);
     const coreCrystal = new THREE.Mesh(crystalGeo, arcCoreMat);
     arcReactorGroup.add(coreCrystal);
 
@@ -137,13 +165,13 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     heroGroup.add(headGroup);
 
     // Neck joint
-    const neckGeo = new THREE.CylinderGeometry(0.22, 0.26, 0.3, 12);
+    const neckGeo = new THREE.CylinderGeometry(0.22, 0.26, 0.3, 10);
     const neck = new THREE.Mesh(neckGeo, armorTitaniumMat);
     neck.position.y = -0.15;
     headGroup.add(neck);
 
     // Cranium Shell (Crimson)
-    const craniumGeo = new THREE.SphereGeometry(0.42, 24, 24);
+    const craniumGeo = new THREE.SphereGeometry(0.42, isMobile ? 16 : 24, isMobile ? 16 : 24);
     const cranium = new THREE.Mesh(craniumGeo, armorRedMat);
     cranium.scale.set(0.9, 1.1, 1.05);
     headGroup.add(cranium);
@@ -177,7 +205,7 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     const holoRingGroup = new THREE.Group();
     heroGroup.add(holoRingGroup);
 
-    const createHoloRing = (radius, segments = 64) => {
+    const createHoloRing = (radius, segments = isMobile ? 36 : 64) => {
       const geo = new THREE.BufferGeometry();
       const points = [];
       for (let i = 0; i <= segments; i++) {
@@ -203,7 +231,7 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     holoRingGroup.add(ring3);
 
     // --- 5. FLOATING PARTICLES (Energy Sparks / Embers) ---
-    const particleCount = 120;
+    const particleCount = isMobile ? 45 : 100;
     const particleGeo = new THREE.BufferGeometry();
     const particlePositions = new Float32Array(particleCount * 3);
     const particleSpeeds = new Float32Array(particleCount);
@@ -218,7 +246,7 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
 
     const particleMat = new THREE.PointsMaterial({
       color: 0x00f0ff,
-      size: 0.045,
+      size: isMobile ? 0.05 : 0.045,
       transparent: true,
       opacity: 0.75,
       blending: THREE.AdditiveBlending,
@@ -252,24 +280,32 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
       mouse.targetY = y;
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
 
     // Resize Handler
     const handleResize = () => {
       if (!container) return;
       const newW = container.clientWidth;
       const newH = container.clientHeight;
-      camera.aspect = newW / newH;
-      camera.updateProjectionMatrix();
-      renderer.setSize(newW, newH);
+      if (newW > 0 && newH > 0) {
+        camera.aspect = newW / newH;
+        camera.updateProjectionMatrix();
+        renderer.setSize(newW, newH);
+      }
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
 
-    // --- ANIMATION LOOP ---
-    let animationFrameId;
+    // Visibility-based loop pause
+    let isVisible = true;
+    let animationFrameId = null;
     const startTime = performance.now();
 
     const animate = () => {
+      if (!isVisible) {
+        animationFrameId = null;
+        return;
+      }
+
       animationFrameId = requestAnimationFrame(animate);
       const elapsedTime = (performance.now() - startTime) * 0.001;
 
@@ -315,6 +351,15 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
       renderer.render(scene, camera);
     };
 
+    // Pause/Resume loop on scroll & visibility
+    const disconnectObserver = observeVisibility(container, (visible) => {
+      isVisible = visible;
+      if (visible && !animationFrameId) {
+        animate();
+      }
+    });
+
+    // Start initial animation
     animate();
 
     // Trigger Surge on Click
@@ -329,23 +374,34 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
         eyeGlowMat.emissiveIntensity = 3.5;
       }, 350);
       setCorePower((prev) => Math.min(prev + 5, 125));
-      if (onPowerSurge) onPowerSurge();
+      if (onPowerSurgeRef.current) onPowerSurgeRef.current();
     };
 
     container.addEventListener('click', handleCanvasClick);
 
+    // Handle context loss
+    const canvasEl = renderer.domElement;
+    const handleContextLost = (e) => {
+      e.preventDefault();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+    canvasEl.addEventListener('webglcontextlost', handleContextLost, false);
+
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      disconnectObserver();
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
       container.removeEventListener('click', handleCanvasClick);
+      canvasEl.removeEventListener('webglcontextlost', handleContextLost);
+
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      renderer.dispose();
+      disposeThreeScene(scene, renderer);
     };
-  }, [onPowerSurge]);
+  }, [hasWebGL]);
 
   const handleChargeCore = () => {
     setIsCharging(true);
@@ -353,6 +409,10 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
     setCorePower(125);
     setTimeout(() => setIsCharging(false), 800);
   };
+
+  if (!hasWebGL) {
+    return <Hero3DFallback type="iron-man" label="MARK LXXXV // ARC CORE ONLINE (2D COMPATIBILITY MODE)" />;
+  }
 
   return (
     <div className="relative w-full h-[540px] md:h-[640px] lg:h-[700px] flex items-center justify-center select-none">
@@ -385,7 +445,7 @@ export default function IronManHeroCanvas({ onPowerSurge }) {
         <button
           onClick={handleChargeCore}
           disabled={isCharging}
-          className="group relative flex items-center gap-2 px-4 py-2 rounded-full glass-panel border border-cyan-500/40 hover:border-cyan-400 text-xs font-mono tracking-wider text-cyan-300 transition-all hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] active:scale-95"
+          className="group relative flex items-center gap-2 px-4 py-2 rounded-full glass-panel border border-cyan-500/40 hover:border-cyan-400 text-xs font-mono tracking-wider text-cyan-300 transition-all hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] active:scale-95 cursor-pointer"
         >
           <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
           <span>{isCharging ? 'OVERCHARGING CORE...' : 'TEST ARC REPULSOR'}</span>

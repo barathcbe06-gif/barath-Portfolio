@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, lazy, Suspense } from 'react';
 import { skillsData } from '../../data/portfolioData';
-import SpiderWebCanvas from '../3d/SpiderWebCanvas';
 import { soundEngine } from '../ui/AudioController';
-import { Bug, CheckCircle, Zap, Shield, Sparkles } from 'lucide-react';
+import { Bug, Sparkles } from 'lucide-react';
+import Hero3DFallback from '../3d/Hero3DFallback';
+
+const SpiderWebCanvas = lazy(() => import('../3d/SpiderWebCanvas'));
 
 export default function SpiderManSection() {
   const [selectedSkill, setSelectedSkill] = useState(skillsData[0]);
 
-  const handleSelect = (skill) => {
+  const handleSelect = useCallback((skill) => {
     soundEngine.playHologramChime();
     setSelectedSkill(skill);
-  };
+  }, []);
 
   return (
     <section id="skills" className="relative py-28 bg-[#030612] overflow-hidden border-t border-red-950/40">
@@ -44,7 +46,9 @@ export default function SpiderManSection() {
           {/* Left: Interactive Physics Web */}
           <div className="lg:col-span-7">
             <div className="glass-panel p-3 sm:p-5 rounded-3xl border border-red-500/30 relative shadow-[0_0_40px_rgba(230,36,41,0.15)]">
-              <SpiderWebCanvas onSelectSkill={handleSelect} />
+              <Suspense fallback={<Hero3DFallback type="spider-web" />}>
+                <SpiderWebCanvas onSelectSkill={handleSelect} activeSkill={selectedSkill} />
+              </Suspense>
             </div>
           </div>
 
