@@ -76,7 +76,7 @@ export default function CaptainAmericaSection() {
                 </div>
                 <h4 className="text-xs font-mono uppercase text-slate-400">EDUCATION</h4>
                 <div className="text-sm font-['Orbitron'] font-bold text-white mt-1">
-                  B.E. Computer Science
+                  B.Sc. Computer Science
                 </div>
                 <p className="text-xs text-slate-300 font-mono mt-1">
                   Specialization in Artificial Intelligence & Data Science foundations.

@@ -266,7 +266,7 @@ export const timelineData = [
   },
   {
     year: "GRADUATE MILESTONE",
-    title: "Bachelor of Computer Science Engineering",
+    title: "Bachelor of Computer Science",
     subtitle: "Specialization in Artificial Intelligence",
     category: "Degree Conferment",
     heroBadge: "S.H.I.E.L.D. Academy Honors",
